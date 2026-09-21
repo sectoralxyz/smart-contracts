@@ -1,0 +1,196 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.24;
+
+import {Test} from "forge-std/Test.sol";
+import {ProtocolAuthority} from "../src/ProtocolAuthority.sol";
+import {AccountRegistry} from "../src/AccountRegistry.sol";
+import {AgentController} from "../src/AgentController.sol";
+import {IProtocolAuthority} from "../src/interfaces/IProtocolAuthority.sol";
+import {IAccountRegistry} from "../src/interfaces/IAccountRegistry.sol";
+import {MockERC20} from "./mocks/MockERC20.sol";
+import "../src/libraries/ProtocolErrors.sol";
+
+contract AgentSpendRouteTest is Test {
+    ProtocolAuthority protocol;
+    AccountRegistry registry;
+    AgentController agents;
+    MockERC20 usdg;
+
+    address admin = makeAddr("admin");
+    address compliance = makeAddr("compliance");
+    address gwen = makeAddr("gwen");
+    address signer = makeAddr("signer");
+    address vendor = makeAddr("vendor");
+    address stranger = makeAddr("stranger");
+
+    uint256 agentId;
+
+    function usd(uint256 d) internal pure returns (uint256) {
+        return d * 1e6;
+    }
+
+    function setUp() public {
+        usdg = new MockERC20("Global Dollar", "USDG", 6);
+        vm.prank(admin);
+        protocol = new ProtocolAuthority(compliance);
+        registry = new AccountRegistry(IProtocolAuthority(address(protocol)));
+        agents = new AgentController(
+            IProtocolAuthority(address(protocol)), IAccountRegistry(address(registry))
+        );
+
+        vm.prank(gwen);
+        registry.createProfile("gwen", AccountRegistry.AccountKind.Personal);
+        usdg.mint(gwen, usd(1_000));
+
+        address[] memory allowed = new address[](1);
+        allowed[0] = vendor;
+        vm.startPrank(gwen);
+        agentId = agents.createAgent(
+            signer,
+            "coding-assistant",
+            AgentController.AutonomyTier.SemiAutonomous,
+            address(usdg),
+            usd(10), // per tx
+            usd(50), // per day
+            usd(5), // hitl threshold
+            allowed,
+            true
+        );
+        usdg.approve(address(agents), usd(100));
+        agents.fundAgent(agentId, usd(100));
+        vm.stopPrank();
+    }
+
+    function _route(address to, uint256 amount) internal view returns (AgentController.SpendRoute) {
+        return agents.routeFor(agentId, to, amount);
+    }
+
+    function assertRoute(AgentController.SpendRoute got, AgentController.SpendRoute want)
+        internal
+        pure
+    {
+        assertEq(uint8(got), uint8(want));
+    }
+
+    function test_within_threshold_settles() public view {
+        assertRoute(_route(vendor, usd(5)), AgentController.SpendRoute.Settles);
+    }
+
+    function test_above_threshold_queues() public view {
+        assertRoute(_route(vendor, usd(6)), AgentController.SpendRoute.Queues);
+    }
+
+    function test_over_per_tx_limit_is_refused() public view {
+        assertRoute(_route(vendor, usd(11)), AgentController.SpendRoute.Refused);
+    }
+
+    function test_recipient_off_allowlist_is_refused() public view {
+        assertRoute(_route(stranger, usd(5)), AgentController.SpendRoute.Refused);
+    }
+
+    function test_exhausted_day_is_refused_until_window_rolls() public {
+        for (uint256 i; i < 10; ++i) {
+            vm.prank(signer);
+            agents.payInvoice(agentId, vendor, usd(5), bytes32(0));
+        }
+        assertRoute(_route(vendor, usd(1)), AgentController.SpendRoute.Refused);
+
+        vm.warp(block.timestamp + 1 days);
+        assertRoute(_route(vendor, usd(1)), AgentController.SpendRoute.Settles);
+    }
+
+    function test_paused_agent_or_protocol_is_refused() public {
+        vm.prank(admin);
+        protocol.setPause(true);
+        assertRoute(_route(vendor, usd(5)), AgentController.SpendRoute.Refused);
+        vm.prank(admin);
+        protocol.setPause(false);
+
+        vm.prank(gwen);
+        agents.setAgentStatus(agentId, AgentController.AgentStatus.Paused);
+        assertRoute(_route(vendor, usd(5)), AgentController.SpendRoute.Refused);
+    }
+
+    function test_supervised_agent_always_queues() public {
+        address[] memory none = new address[](0);
+        vm.prank(gwen);
+        uint256 supervised = agents.createAgent(
+            signer,
+            "intern",
+            AgentController.AutonomyTier.Supervised,
+            address(usdg),
+            usd(10),
+            usd(50),
+            usd(5),
+            none,
+            false
+        );
+        assertRoute(agents.routeFor(supervised, vendor, usd(1)), AgentController.SpendRoute.Queues);
+    }
+
+    function test_unknown_agent_is_refused() public view {
+        assertRoute(agents.routeFor(999, vendor, usd(1)), AgentController.SpendRoute.Refused);
+    }
+
+    function test_window_reset_time_tracks_the_live_window() public {
+        uint256 opened = agents.getPolicy(agentId).windowStart;
+        assertEq(agents.windowResetsAt(agentId), opened + 1 days);
+
+        // Spending inside the window does not move the reset.
+        vm.warp(opened + 6 hours);
+        vm.prank(signer);
+        agents.payInvoice(agentId, vendor, usd(5), bytes32(0));
+        assertEq(agents.windowResetsAt(agentId), opened + 1 days);
+
+        // Once it has lapsed the answer is "now", and the next spend reopens it.
+        vm.warp(opened + 30 hours);
+        assertEq(agents.windowResetsAt(agentId), block.timestamp);
+        vm.prank(signer);
+        agents.payInvoice(agentId, vendor, usd(5), bytes32(0));
+        assertEq(agents.windowResetsAt(agentId), block.timestamp + 1 days);
+    }
+
+    function test_allowlist_entries_can_be_added_and_removed_singly() public {
+        address partner = makeAddr("partner");
+        assertRoute(_route(partner, usd(5)), AgentController.SpendRoute.Refused);
+
+        vm.prank(gwen);
+        agents.addAllowedRecipient(agentId, partner);
+        assertRoute(_route(partner, usd(5)), AgentController.SpendRoute.Settles);
+        assertEq(agents.getPolicy(agentId).allowedRecipients.length, 2);
+
+        vm.prank(gwen);
+        agents.removeAllowedRecipient(agentId, vendor);
+        assertRoute(_route(vendor, usd(5)), AgentController.SpendRoute.Refused);
+        assertRoute(_route(partner, usd(5)), AgentController.SpendRoute.Settles);
+        assertEq(agents.getPolicy(agentId).allowedRecipients.length, 1);
+    }
+
+    function test_allowlist_edits_are_validated_and_owner_only() public {
+        vm.expectRevert(UnauthorizedAgentOwner.selector);
+        vm.prank(signer);
+        agents.addAllowedRecipient(agentId, stranger);
+
+        vm.expectRevert(RecipientAlreadyAllowed.selector);
+        vm.prank(gwen);
+        agents.addAllowedRecipient(agentId, vendor);
+
+        vm.expectRevert(RecipientNotOnAllowlist.selector);
+        vm.prank(gwen);
+        agents.removeAllowedRecipient(agentId, stranger);
+
+        vm.expectRevert(ZeroAddress.selector);
+        vm.prank(gwen);
+        agents.addAllowedRecipient(agentId, address(0));
+    }
+
+    function test_allowlist_has_a_ceiling() public {
+        vm.startPrank(gwen);
+        for (uint256 i = 1; i < 10; ++i) {
+            agents.addAllowedRecipient(agentId, address(uint160(0x1000 + i)));
+        }
+        vm.expectRevert(TooManyAllowedRecipients.selector);
+        agents.addAllowedRecipient(agentId, address(0xBEEF));
+        vm.stopPrank();
+    }
+}
