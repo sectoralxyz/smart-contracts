@@ -76,10 +76,7 @@ contract AccountRegistry is IAccountRegistry {
     /// @param accountKind Personal, business, or an operator of agents.
     function createProfile(string calldata handle, AccountKind accountKind) external {
         if (_profiles[msg.sender].exists) revert ProfileAlreadyExists();
-
-        uint256 len = bytes(handle).length;
-        if (len == 0 || len > MAX_HANDLE_LEN) revert InvalidHandleLength();
-        if (!_isValidHandle(handle)) revert InvalidHandleCharacters();
+        _checkHandle(handle);
 
         bytes32 key = keccak256(bytes(handle));
         if (_handleOwner[key] != address(0)) revert HandleAlreadyTaken();
@@ -108,10 +105,7 @@ contract AccountRegistry is IAccountRegistry {
     function changeHandle(string calldata newHandle) external {
         Profile storage p = _profiles[msg.sender];
         if (!p.exists) revert ProfileNotFound();
-
-        uint256 len = bytes(newHandle).length;
-        if (len == 0 || len > MAX_HANDLE_LEN) revert InvalidHandleLength();
-        if (!_isValidHandle(newHandle)) revert InvalidHandleCharacters();
+        _checkHandle(newHandle);
 
         bytes32 newKey = keccak256(bytes(newHandle));
         // Catches a name someone else holds and a pointless re-claim of your own.
@@ -211,6 +205,14 @@ contract AccountRegistry is IAccountRegistry {
     }
 
     // ── Internal ─────────────────────────────────────────────────────────────
+
+    /// @dev The single place the handle rules are enforced on a write, so
+    ///      opening an account and changing a handle cannot drift apart.
+    function _checkHandle(string calldata handle) internal pure {
+        uint256 len = bytes(handle).length;
+        if (len == 0 || len > MAX_HANDLE_LEN) revert InvalidHandleLength();
+        if (!_isValidHandle(handle)) revert InvalidHandleCharacters();
+    }
 
     /// @dev Lowercase letters, digits, and underscores only. The restriction
     ///      exists so a handle survives being pasted into a request link or
