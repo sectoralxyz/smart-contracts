@@ -59,4 +59,17 @@ contract ConfidentialTokenTransferTest is Test {
         vm.prank(felix);
         confidential.confidentialTransfer(makeAddr("nobody"), delta, delta, "", signals);
     }
+
+    function test_pool_reports_backing_through_wraps_and_unwraps() public {
+        assertTrue(confidential.isFullyBacked());
+
+        uint256[] memory signals = new uint256[](0);
+        vm.prank(felix);
+        confidential.withdraw(40e6, "", signals);
+        assertTrue(confidential.isFullyBacked());
+
+        // A stray direct transfer overfunds the pool, which still counts.
+        usdg.mint(address(confidential), 1e6);
+        assertTrue(confidential.isFullyBacked());
+    }
 }

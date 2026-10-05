@@ -283,6 +283,14 @@ contract ConfidentialToken is ReentrancyGuard {
         return (p.x, p.y);
     }
 
+    /// @notice Whether the pool holds at least as much of the underlying asset
+    ///         as it has wrapped. Plain transfers straight to this contract can
+    ///         push the balance above {totalWrapped}, which is harmless; falling
+    ///         below it is the condition a monitor should page someone about.
+    function isFullyBacked() external view returns (bool) {
+        return asset.balanceOf(address(this)) >= totalWrapped;
+    }
+
     /// @notice The raw ciphertext balance. Turning it back into a figure takes
     ///         the account's view key, which this contract has never seen.
     function encryptedBalanceOf(address account) external view returns (Ciphertext memory) {
