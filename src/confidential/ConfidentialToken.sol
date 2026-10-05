@@ -49,6 +49,12 @@ contract ConfidentialToken is ReentrancyGuard {
     /// @notice Thrown when a rotation names the verifier already installed.
     error SameVerifier();
 
+    /// @notice Thrown when an account tries to send an encrypted amount to
+    ///         itself. Applying both deltas to one balance would burn proving
+    ///         work for nothing, and the old {Unauthorized} revert told a client
+    ///         nothing about what had actually gone wrong.
+    error SelfTransfer();
+
     struct Ciphertext {
         AltBn128.Point c1;
         AltBn128.Point c2;
@@ -211,7 +217,7 @@ contract ConfidentialToken is ReentrancyGuard {
     ) external nonReentrant whenNotPaused {
         if (!registered[msg.sender]) revert AccountNotRegistered();
         if (!registered[to]) revert AccountNotRegistered();
-        if (to == msg.sender) revert Unauthorized();
+        if (to == msg.sender) revert SelfTransfer();
         if (!verifier.verifyTransfer(proof, publicSignals)) revert ProofRejected();
 
         Ciphertext storage from = _balance[msg.sender];
