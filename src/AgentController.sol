@@ -37,6 +37,9 @@ contract AgentController is ReentrancyGuard {
     /// @notice Thrown when a rotation names the key the agent is already using.
     error SameSigner();
 
+    /// @notice Thrown when an agent is moved to the status it already has.
+    error SameAgentStatus();
+
     /// @notice How much rope an agent gets before a person has to weigh in.
     enum AutonomyTier {
         /// Nothing settles directly; every spend waits for approval.
@@ -383,6 +386,7 @@ contract AgentController is ReentrancyGuard {
         if (status == AgentStatus.Revoked) revert AgentAlreadyRevoked();
         Agent storage a = _agents[agentId];
         if (a.status == AgentStatus.Revoked) revert AgentAlreadyRevoked();
+        if (a.status == status) revert SameAgentStatus();
 
         a.status = status;
         emit AgentStatusChanged(agentId, status, block.timestamp);
