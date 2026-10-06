@@ -152,6 +152,10 @@ contract RequestLedger is ReentrancyGuard {
         Request storage r = _requests[requestId];
         if (r.status != RequestStatus.Open) revert RequestNotOpen();
         if (block.timestamp >= r.expiresAt) revert RequestExpired();
+        // A plain request can never be stored at zero, but a confidential one
+        // can commit to zero, and settling it would close the link without a
+        // cent moving. Refuse that the same way {create} refuses a plain one.
+        if (amount == 0) revert InvalidSpendAmount();
 
         if (r.isConfidential) {
             if (keccak256(abi.encodePacked(amount, blinding)) != r.amountCommitment) {
