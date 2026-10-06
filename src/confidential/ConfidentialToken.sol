@@ -159,6 +159,9 @@ contract ConfidentialToken is ReentrancyGuard {
         uint256 before = asset.balanceOf(address(this));
         asset.safeTransferFrom(msg.sender, address(this), amount);
         uint256 received = asset.balanceOf(address(this)) - before;
+        // A token that takes its whole transfer as a fee would otherwise log a
+        // Deposited event for nothing and leave the balance untouched.
+        if (received == 0) revert InvalidSpendAmount();
 
         Ciphertext storage bal = _balance[msg.sender];
         bal.c2 = bal.c2.add(AltBn128.encode(received));
