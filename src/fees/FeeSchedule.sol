@@ -24,6 +24,11 @@ contract FeeSchedule is IFeeSchedule {
 
     uint256 internal constant BPS = 10_000;
 
+    /// @notice The highest base rate the schedule will accept: 1%. The fee is
+    ///         added on top of every payment, so a slipped digit in a retune
+    ///         should be refused here rather than charged to users.
+    uint16 public constant MAX_BASE_FEE_BPS = 100;
+
     /// @notice Who may retune the schedule; the protocol multisig in practice.
     address public authority;
 
@@ -79,7 +84,7 @@ contract FeeSchedule is IFeeSchedule {
 
     /// @notice Resets the base rate and the ceiling.
     function setSchedule(uint16 baseFeeBps_, uint256 feeCap_) external onlyAuthority {
-        if (baseFeeBps_ > BPS) revert InvalidFeeConfig();
+        if (baseFeeBps_ > MAX_BASE_FEE_BPS) revert InvalidFeeConfig();
         baseFeeBps = baseFeeBps_;
         feeCap = feeCap_;
         emit FeeScheduleUpdated(baseFeeBps_, feeCap_);
