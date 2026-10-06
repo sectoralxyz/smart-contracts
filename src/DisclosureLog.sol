@@ -67,6 +67,11 @@ contract DisclosureLog {
         if (!registry.isRegistered(msg.sender)) revert ProfileNotFound();
         uint256 len = bytes(txReference).length;
         if (len == 0 || len > MAX_TX_REFERENCE_LEN) revert InvalidTxReferenceLength();
+        // A receipt with no viewer or no payload hash proves nothing to the
+        // auditor holding it, so it is refused rather than recorded.
+        if (viewerHash == bytes32(0) || disclosureCommitment == bytes32(0)) {
+            revert MissingCommitment();
+        }
 
         receiptId = ++receiptCount;
         _receipts[receiptId] = DisclosureReceipt({
