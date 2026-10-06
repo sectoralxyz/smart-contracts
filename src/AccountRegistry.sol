@@ -21,6 +21,10 @@ contract AccountRegistry is IAccountRegistry {
     /// @notice Thrown when a reclassification names the kind already recorded.
     error SameAccountKind();
 
+    /// @notice Thrown when the compliance authority records the tier an
+    ///         account already holds.
+    error SameKycTier();
+
     enum AccountKind {
         Personal,
         Business,
@@ -145,6 +149,9 @@ contract AccountRegistry is IAccountRegistry {
         }
         Profile storage p = _profiles[owner];
         if (!p.exists) revert ProfileNotFound();
+        // A repeat write would bump updatedAt and emit an event for a change
+        // that never happened, which muddies the audit trail.
+        if (p.kycTier == kycTier) revert SameKycTier();
 
         p.kycTier = kycTier;
         p.updatedAt = uint64(block.timestamp);
