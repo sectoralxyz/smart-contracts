@@ -104,6 +104,9 @@ contract RequestLedger is ReentrancyGuard {
     ) external returns (uint256 requestId) {
         if (!registry.isRegistered(msg.sender)) revert ProfileNotFound();
         if (receiver == address(0) || token == address(0)) revert ZeroAddress();
+        // A token address with no code behind it, such as a wallet pasted into
+        // the wrong field, would produce a link nobody can ever pay.
+        if (token.code.length == 0) revert InvalidToken();
         if (expiresAt <= block.timestamp) revert InvalidExpiry();
         if (!isConfidential && amount == 0) revert InvalidSpendAmount();
         // A confidential request with no commitment could never be paid, since

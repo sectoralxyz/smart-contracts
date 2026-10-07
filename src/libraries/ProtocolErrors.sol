@@ -52,6 +52,7 @@ error RequestAmountMismatch();
 error RequestCommitmentMismatch();
 error MissingCommitment();
 error InvalidExpiry();
+error InvalidToken();
 
 // ── Disclosure receipts ─────────────────────────────────────────────────────
 error InvalidTxReferenceLength();
