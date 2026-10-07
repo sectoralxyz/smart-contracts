@@ -55,6 +55,9 @@ contract ConfidentialToken is ReentrancyGuard {
     ///         nothing about what had actually gone wrong.
     error SelfTransfer();
 
+    /// @notice Thrown when the freeze is set to the state it is already in.
+    error PauseUnchanged();
+
     struct Ciphertext {
         AltBn128.Point c1;
         AltBn128.Point c2;
@@ -254,6 +257,7 @@ contract ConfidentialToken is ReentrancyGuard {
     ///         and verifier rotation are left alive deliberately, so the pool
     ///         can be repaired rather than redeployed.
     function setPaused(bool paused_) external onlyAuthority {
+        if (paused == paused_) revert PauseUnchanged();
         paused = paused_;
         emit PauseToggled(paused_);
     }
