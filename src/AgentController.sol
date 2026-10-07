@@ -447,6 +447,7 @@ contract AgentController is ReentrancyGuard {
         uint256 before = token.balanceOf(address(this));
         token.safeTransferFrom(msg.sender, address(this), amount);
         uint256 received = token.balanceOf(address(this)) - before;
+        if (received == 0) revert InvalidSpendAmount();
 
         vaultBalance[agentId] += received;
         emit AgentFunded(agentId, msg.sender, received, block.timestamp);
