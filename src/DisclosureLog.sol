@@ -127,8 +127,9 @@ contract DisclosureLog {
         uint256 total = all.length;
         if (offset >= total) return new uint256[](0);
 
-        uint256 end = offset + limit;
-        if (end > total) end = total;
+        // Same clamp as RequestLedger: compare with what is left so a
+        // type(uint256).max limit cannot overflow.
+        uint256 end = limit > total - offset ? total : offset + limit;
 
         page = new uint256[](end - offset);
         for (uint256 i = offset; i < end; ++i) {
