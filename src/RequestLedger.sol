@@ -256,8 +256,10 @@ contract RequestLedger is ReentrancyGuard {
         uint256 total = all.length;
         if (offset >= total) return new uint256[](0);
 
-        uint256 end = offset + limit;
-        if (end > total) end = total;
+        // Compare against what is left rather than adding first, so a client
+        // passing type(uint256).max to mean "everything" gets the rest of the
+        // list instead of an overflow panic.
+        uint256 end = limit > total - offset ? total : offset + limit;
 
         page = new uint256[](end - offset);
         for (uint256 i = offset; i < end; ++i) {
