@@ -40,6 +40,9 @@ contract AgentController is ReentrancyGuard {
     /// @notice Thrown when an agent is moved to the status it already has.
     error SameAgentStatus();
 
+    /// @notice Thrown when an agent is renamed to the label it already has.
+    error SameLabel();
+
     /// @notice How much rope an agent gets before a person has to weigh in.
     enum AutonomyTier {
         /// Nothing settles directly; every spend waits for approval.
@@ -373,6 +376,7 @@ contract AgentController is ReentrancyGuard {
         if (len == 0 || len > MAX_LABEL_LEN) revert InvalidLabelLength();
         Agent storage a = _agents[agentId];
         if (a.status == AgentStatus.Revoked) revert AgentAlreadyRevoked();
+        if (keccak256(bytes(a.label)) == keccak256(bytes(label))) revert SameLabel();
 
         string memory previous = a.label;
         a.label = label;
